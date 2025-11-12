@@ -1,149 +1,71 @@
--- TELEPORTE INSTANTÂNEO + MINI ESFERA + TOGGLE GLOBAL COM V
--- VERSÃO CORRIGIDA E TESTADA
-
-local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-local LocalPlayer = Players.LocalPlayer
-
--- Variáveis globais
-local SCRIPT_ATIVO = true
-local TP_ENABLED = false
-local TP_POSITION = nil
-local ESFERA = nil
-local HIGHLIGHT = nil
-local spinConnection = nil
-
-local ESFERA_SIZE = 1.5
-local ESFERA_COLOR = Color3.fromRGB(0, 255, 0)
-
--- Função segura para obter HumanoidRootPart
-local function getHRP()
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        return LocalPlayer.Character.HumanoidRootPart
+local Players,UIS,RS,WS=game:GetService("Players"),game:GetService("UserInputService"),game:GetService("RunService"),game:GetService("Workspace")
+local lp,cam=Players.LocalPlayer,WS.CurrentCamera
+local highlights,highlightOn={},true
+local AURA,LOCKED=Color3.fromRGB(255,0,0),Color3.fromRGB(0,255,0)
+local FILL_T,OUT_T=0.6,0.2
+local KEY_T,KEY_R,KEY_G,KEY_C=Enum.KeyCode.T,Enum.KeyCode.R,Enum.KeyCode.G,Enum.KeyCode.C
+local AIM_FOV,aimOn,lockColor,target=300,false,false,nil
+local aimPart="Head"
+local function makeHighlight(char)
+    if not char or not char:IsA("Model")then return end
+    local h=Instance.new("Highlight")
+    h.Adornee,h.FillColor,h.OutlineColor=char,AURA,AURA
+    h.FillTransparency,h.OutlineTransparency,h.Enabled=FILL_T,OUT_T,highlightOn
+    h.Parent=char
+    return h
+end
+local function cleanup(p)
+    if highlights[p]then highlights[p]:Destroy()highlights[p]=nil end
+end
+local function setup(p)
+    if p==lp then return end
+    local function add(char)
+        if not char then return end
+        cleanup(p)
+        local h=makeHighlight(char)
+        highlights[p]=h
+        char.AncestryChanged:Connect(function(_,parent)if not parent then cleanup(p)end end)
     end
-    return nil
+    if p.Character then add(p.Character)end
+    p.CharacterAdded:Connect(add)
 end
-
--- Limpar tudo
-local function limparTudo()
-    if ESFERA and ESFERA.Parent then ESFERA:Destroy() end
-    if HIGHLIGHT and HIGHLIGHT.Parent then HIGHLIGHT:Destroy() end
-    if spinConnection then spinConnection:Disconnect() end
-    ESFERA = nil
-    HIGHLIGHT = nil
-    spinConnection = nil
-end
-
--- Criar esfera
-local function criarEsfera(pos)
-    limparTudo()
-
-    local hrp = getHRP()
-    if not hrp then return end
-
-    ESFERA = Instance.new("Part")
-    ESFERA.Name = "TP_Esfera_" .. LocalPlayer.Name
-    ESFERA.Shape = Enum.PartType.Ball
-    ESFERA.Size = Vector3.new(ESFERA_SIZE, ESFERA_SIZE, ESFERA_SIZE)
-    ESFERA.Position = pos + Vector3.new(0, ESFERA_SIZE/2, 0)
-    ESFERA.Anchored = true
-    ESFERA.CanCollide = false
-    ESFERA.Material = Enum.Material.Neon
-    ESFERA.Color = ESFERA_COLOR
-    ESFERA.Transparency = 0
-    ESFERA.Parent = workspace
-
-    HIGHLIGHT = Instance.new("Highlight")
-    HIGHLIGHT.FillColor = ESFERA_COLOR
-    HIGHLIGHT.OutlineColor = Color3.fromRGB(255, 255, 255)
-    HIGHLIGHT.FillTransparency = 0.5
-    HIGHLIGHT.OutlineTransparency = 0
-    HIGHLIGHT.Adornee = ESFERA
-    HIGHLIGHT.Parent = ESFERA
-
-    -- Rotação
-    spinConnection = RunService.Heartbeat:Connect(function()
-        if ESFERA and ESFERA.Parent then
-            ESFERA.CFrame = ESFERA.CFrame * CFrame.Angles(0, math.rad(5), 0)
-        else
-            spinConnection:Disconnect()
-        end
-    end)
-
-    print("ESFERA CRIADA em:", pos)
-end
-
--- Teleportar
-local function teleportar()
-    local hrp = getHRP()
-    if not hrp or not TP_POSITION then return end
-
-    hrp.CFrame = CFrame.new(TP_POSITION)
-    limparTudo()
-    print("TELEPORTADO!")
-end
-
--- Reset TP
-local function resetTP()
-    TP_ENABLED = false
-    TP_POSITION = nil
-    limparTudo()
-end
-
--- Input
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-
-    local hrp = getHRP()
-
-    -- TOGGLE GLOBAL COM V
-    if input.KeyCode == Enum.KeyCode.V then
-        SCRIPT_ATIVO = not SCRIPT_ATIVO
-        if SCRIPT_ATIVO then
-            print("SCRIPT ATIVADO (V)")
-        else
-            print("SCRIPT DESATIVADO (V)")
-            resetTP()
-        end
-        return
-    end
-
-    -- Se desativado, bloqueia C
-    if not SCRIPT_ATIVO then return end
-
-    -- TECLA C
-    if input.KeyCode == Enum.KeyCode.C then
-        if not hrp then
-            print("Personagem não carregado!")
-            return
-        end
-
-        TP_ENABLED = not TP_ENABLED
-
-        if TP_ENABLED then
-            TP_POSITION = hrp.Position
-            criarEsfera(TP_POSITION)
-            print("PONTO SALVO! Aperte C novamente para TP.")
-        else
-            teleportar()
-        end
+for _,p in ipairs(Players:GetPlayers())do setup(p)end
+Players.PlayerAdded:Connect(setup)
+Players.PlayerRemoving:Connect(cleanup)
+UIS.InputBegan:Connect(function(i,gp)
+    if gp then return end
+    if i.KeyCode==KEY_T then
+        highlightOn=not highlightOn
+        for _,h in pairs(highlights)do if h then h.Enabled=highlightOn end end
+    elseif i.KeyCode==KEY_R then
+        aimOn=not aimOn
+        target=aimOn and(function()
+            local mouse,closest,min=UIS:GetMouseLocation(),nil,AIM_FOV
+            for _,plr in ipairs(Players:GetPlayers())do
+                local ch=plr.Character if plr~=lp and ch and ch:FindFirstChild("Head")then
+                    local pos,onScreen=cam:WorldToViewportPoint(ch.Head.Position)
+                    if onScreen then
+                        local d=(Vector2.new(pos.X,pos.Y)-mouse).Magnitude
+                        if d<min then closest,min=plr,d end
+                    end
+                end
+            end
+            return closest
+        end)()or nil
+        if not aimOn then lockColor=false end
+    elseif i.KeyCode==KEY_G and aimOn and target then
+        lockColor=not lockColor
+        local h=highlights[target]
+        if h then h.FillColor,h.OutlineColor=lockColor and LOCKED or AURA,lockColor and LOCKED or AURA end
+    elseif i.KeyCode==KEY_C then
+        aimPart=(aimPart=="Head")and"HumanoidRootPart"or"Head"
+        print("Mira agora trava no: "..aimPart)
     end
 end)
-
--- Respawn
-LocalPlayer.CharacterAdded:Connect(function(char)
-    task.wait(1) -- Espera carregar
-    resetTP()
-    print("RESPAWN: Script resetado.")
+RS.RenderStepped:Connect(function()
+    if aimOn and target and target.Character and target.Character:FindFirstChild(aimPart)then
+        cam.CFrame=CFrame.new(cam.CFrame.Position,target.Character[aimPart].Position)
+    end
 end)
-
--- Limpeza
-game:BindToClose(function()
-    limparTudo()
-end)
-
--- Inicialização
-print("SCRIPT CARREGADO!")
-print("V = Liga/Desliga | C = Marca/TP (só se ativado)")
-print("STATUS: ATIVADO")
+print("🟢 ZBLACK ESP/AIM carregado!")
+print("T=ESP | R=Aim | G=Lock | C=Head/Body")
